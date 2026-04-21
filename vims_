@@ -1,0 +1,29 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+SERVER_NAME="${VIMS_SERVER:-VIMS}"
+VIM_BIN="${VIMS_VIM:-vim}"
+
+if ! command -v "$VIM_BIN" >/dev/null 2>&1; then
+  echo "vims: '$VIM_BIN' was not found in PATH" >&2
+  exit 127
+fi
+
+if ! "$VIM_BIN" --version 2>/dev/null | grep -Eq '^\+clientserver\b'; then
+  cat >&2 <<MSG
+vims: $VIM_BIN does not have +clientserver.
+Install a Vim build with +clientserver support (see README.md).
+MSG
+  exit 2
+fi
+
+if "$VIM_BIN" --serverlist 2>/dev/null | tr ' ' '\n' | grep -Fxq "$SERVER_NAME"; then
+  if (($# > 0)); then
+    exec "$VIM_BIN" --servername "$SERVER_NAME" --remote-silent "$@"
+  fi
+
+  try_fg_job
+  exit 0
+else
+  exec "$VIM_BIN" --servername "$SERVER_NAME" "$@"
+fi
