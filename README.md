@@ -3,7 +3,7 @@
 `vims` is a Bash wrapper around Vim that targets a **single Vim server**.
 
 - First call: starts Vim with a fixed `--servername`.
-- Next calls: forward arguments to that existing server using Vim remote mode.
+- Next calls: bring that instance to foreground (best effort) and forward arguments using Vim remote mode.
 
 This is useful when you want many shell invocations (`vims file1`, `vims file2`, …) to reuse one persistent Vim UI/session.
 
@@ -72,6 +72,10 @@ vims() {
   }
 
   if "$vim_bin" --serverlist 2>/dev/null | tr ' ' '\n' | grep -Fxq "$server_name"; then
+    "$vim_bin" --servername "$server_name" --remote-expr 'foreground()' >/dev/null 2>&1 || true
+    if [ "$#" -eq 0 ]; then
+      return 0
+    fi
     "$vim_bin" --servername "$server_name" --remote-silent "$@"
   else
     "$vim_bin" --servername "$server_name" "$@"
@@ -107,4 +111,4 @@ VIMS_VIM=vim.gtk3 vims notes.md
 
 ## Notes on compatibility
 
-`vims` forwards arguments using `vim --remote-silent` once the server exists. This is the most generic forwarding mode provided by Vim clientserver, but Vim itself defines what can be forwarded remotely.
+When a server already exists, `vims` first calls Vim's `foreground()` function (best effort) so the existing instance is focused, then forwards arguments with `vim --remote-silent`. Exact focus behavior still depends on your terminal/window manager/Vim build.
