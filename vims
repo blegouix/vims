@@ -1,0 +1,45 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# vims: vim wrapper that reuses a single Vim clientserver instance.
+#
+# Behaviour:
+# - First invocation starts Vim with the configured servername.
+# - Subsequent invocations forward arguments using Vim's remote mode.
+#
+# Configuration:
+#   VIMS_SERVER   Server name to reuse (default: VIMS)
+#   VIMS_VIM      Vim binary to execute (default: vim)
+
+SERVER_NAME="${VIMS_SERVER:-VIMS}"
+VIM_BIN="${VIMS_VIM:-vim}"
+
+has_clientserver() {
+  "$VIM_BIN" --version 2>/dev/null | grep -Eq '^\+clientserver\b'
+}
+
+server_exists() {
+  "$VIM_BIN" --serverlist 2>/dev/null | tr ' ' '\n' | grep -Fxq "$SERVER_NAME"
+}
+
+if ! command -v "$VIM_BIN" >/dev/null 2>&1; then
+  echo "vims: '$VIM_BIN' was not found in PATH" >&2
+  exit 127
+fi
+
+if ! has_clientserver; then
+  cat >&2 <<MSG
+vims: $VIM_BIN does not have +clientserver.
+Install a Vim build with +clientserver support (see README.md).
+MSG
+  exit 2
+fi
+
+if server_exists; then
+  # Forward as generically as Vim remote mode allows.
+  # --remote-silent avoids startup noise and returns success when possible.
+  exec "$VIM_BIN" --servername "$SERVER_NAME" --remote-silent "$@"
+else
+  # First launch creates the long-lived server.
+  exec "$VIM_BIN" --servername "$SERVER_NAME" "$@"
+fi
