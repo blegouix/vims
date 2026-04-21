@@ -3,7 +3,8 @@
 `vims` is a Bash wrapper around Vim that targets a **single Vim server**.
 
 - First call: starts Vim with a fixed `--servername`.
-- Next calls: bring that instance to foreground (best effort) and forward arguments using Vim remote mode.
+- Next calls: forward arguments to that same instance using Vim remote mode.
+- If you install as a shell function, it can memorize a Vim job id and use `fg`.
 
 This is useful when you want many shell invocations (`vims file1`, `vims file2`, …) to reuse one persistent Vim UI/session.
 
@@ -52,9 +53,9 @@ sudo chmod 0755 /usr/local/bin/vims
 
 After this, `vims` should be available from anywhere.
 
-### Option 2: copy/paste into your `~/.bashrc`
+### Option 2 (recommended if you want `fg`): copy/paste into `~/.bashrc`
 
-If you prefer not to install a standalone file, add this function to `~/.bashrc`:
+Shell job control (`fg`, `bg`, job IDs like `%1`) is local to your current interactive shell. So if you specifically want `fg`, use a shell function:
 
 ```bash
 vims() {
@@ -72,13 +73,30 @@ vims() {
   }
 
   if "$vim_bin" --serverlist 2>/dev/null | tr ' ' '\n' | grep -Fxq "$server_name"; then
-    "$vim_bin" --servername "$server_name" --remote-expr 'foreground()' >/dev/null 2>&1 || true
-    if [ "$#" -eq 0 ]; then
-      return 0
+    if [ "$#" -gt 0 ]; then
+      "$vim_bin" --servername "$server_name" --remote-silent "$@"
     fi
-    "$vim_bin" --servername "$server_name" --remote-silent "$@"
+
+    # Bring the memorized Vim job to foreground if known.
+    if [ -n "${VIMS_JOB:-}" ]; then
+      fg "$VIMS_JOB"
+      return $?
+    fi
+
+    return 0
+  fi
+
+  # First start: run in background, memorize its job id, then fg it.
+  "$vim_bin" --servername "$server_name" "$@" &
+  local pid=$!
+  local job_id
+  job_id=$(jobs -l | awk -v p="$pid" '$2==p {print $1}' | tr -d '[]')
+
+  if [ -n "$job_id" ]; then
+    export VIMS_JOB="%$job_id"
+    fg "$VIMS_JOB"
   else
-    "$vim_bin" --servername "$server_name" "$@"
+    wait "$pid"
   fi
 }
 ```
@@ -111,4 +129,5 @@ VIMS_VIM=vim.gtk3 vims notes.md
 
 ## Notes on compatibility
 
-When a server already exists, `vims` first calls Vim's `foreground()` function (best effort) so the existing instance is focused, then forwards arguments with `vim --remote-silent`. Exact focus behavior still depends on your terminal/window manager/Vim build.
+- Standalone executable `vims` reliably reuses one server and forwards arguments.
+- `fg` behavior requires shell-function usage in an interactive shell (Option 2 above), because job control is not shared across separate processes.

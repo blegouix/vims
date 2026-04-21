@@ -3,14 +3,14 @@ set -euo pipefail
 
 # vims: vim wrapper that reuses a single Vim clientserver instance.
 #
-# Behaviour:
-# - First invocation starts Vim with the configured servername.
-# - Subsequent invocations forward arguments using Vim's remote mode.
-# - Existing server is brought to foreground on each invocation when possible.
+# NOTE ABOUT fg/JOB CONTROL:
+# - Real shell job control (fg/bg, job IDs) only works in the current interactive shell.
+# - That means the reliable "use fg" behavior is when this logic is used as a shell function
+#   (for example from ~/.bashrc), not as a standalone executable process.
 #
-# Configuration:
-#   VIMS_SERVER   Server name to reuse (default: VIMS)
-#   VIMS_VIM      Vim binary to execute (default: vim)
+# This script still works as an executable and forwards all arguments to one Vim server.
+# When job control metadata exists in environment variables (typically set by shell function
+# usage), it will try to foreground that job with `fg` before exiting.
 
 SERVER_NAME="${VIMS_SERVER:-VIMS}"
 VIM_BIN="${VIMS_VIM:-vim}"
@@ -23,9 +23,12 @@ server_exists() {
   "$VIM_BIN" --serverlist 2>/dev/null | tr ' ' '\n' | grep -Fxq "$SERVER_NAME"
 }
 
-bring_server_to_foreground() {
-  # Best effort: Vim's foreground() returns non-zero if unsupported in this UI.
-  "$VIM_BIN" --servername "$SERVER_NAME" --remote-expr 'foreground()' >/dev/null 2>&1 || true
+try_fg_job() {
+  # Works only in interactive shells where this runs in the current shell context.
+  # VIMS_JOB stores values like "%1".
+  if [[ ${VIMS_JOB:-} != "" ]] && [[ $- == *i* ]]; then
+    fg "$VIMS_JOB" >/dev/null 2>&1 || true
+  fi
 }
 
 if ! command -v "$VIM_BIN" >/dev/null 2>&1; then
@@ -42,16 +45,12 @@ MSG
 fi
 
 if server_exists; then
-  bring_server_to_foreground
-
-  if (($# == 0)); then
-    exit 0
+  if (($# > 0)); then
+    exec "$VIM_BIN" --servername "$SERVER_NAME" --remote-silent "$@"
   fi
 
-  # Forward as generically as Vim remote mode allows.
-  # --remote-silent avoids startup noise and returns success when possible.
-  exec "$VIM_BIN" --servername "$SERVER_NAME" --remote-silent "$@"
+  try_fg_job
+  exit 0
 else
-  # First launch creates the long-lived server.
   exec "$VIM_BIN" --servername "$SERVER_NAME" "$@"
 fi
