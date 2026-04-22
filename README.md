@@ -1,11 +1,11 @@
 # vims
 
-`vims` is a Bash wrapper around Vim that targets a **single Vim server**.
+`vims` is a Bash function around Vim that targets a **single Vim server**.
 
-- First call: starts Vim with a fixed `--servername`.
-- Next calls: forward arguments to that same instance using Vim remote mode.
+- First call: starts Vim with a fixed `--servername` in the foreground for terminal Vim.
+- Next calls: open files in tabs in that same instance and bring it back to the foreground when this shell owns it.
 
-This is useful when you want many shell invocations (`vims file1`, `vims -O file2 file3`, …) to reuse one persistent Vim UI/session.
+This is useful when you want many shell invocations (`vims`, `vims file1`, `vims file2`, …) to reuse one persistent Vim UI/session.
 
 ## Requirements
 
@@ -18,30 +18,37 @@ Quick check:
 vim --version | grep clientserver
 ```
 
-You should see `+clientserver`. If your default `vim` still does not report `+clientserver`, call the wrapper with a specific Vim binary:
+You should see `+clientserver`. By default `vims` uses terminal `vim`. If you want GUI Vim, set `VIMS_VIM=gvim` explicitly:
 
 ```bash
-VIMS_VIM=/usr/bin/vim.gtk3 vims README.md
+VIMS_VIM=/usr/bin/gvim vims README.md
 ```
 
 ## Installation
 
-Install directly to `/usr/local/bin` with `wget`
+Install `vims.bash` somewhere stable, then source it from your `~/.bashrc`.
 
 ```bash
-sudo wget -O /usr/local/bin/vims https://raw.githubusercontent.com/blegouix/vims/main/vims_
-sudo wget -O /usr/local/bin/vims https://raw.githubusercontent.com/blegouix/vims/main/vims
-sudo chmod 0755 /usr/local/bin/vims_
-sudo chmod 0755 /usr/local/bin/vims 
+mkdir -p "$HOME/.local/share/vims"
+wget -O "$HOME/.local/share/vims/vims.bash" \
+  https://raw.githubusercontent.com/blegouix/vims/main/vims.bash
+echo 'source "$HOME/.local/share/vims/vims.bash"' >> "$HOME/.bashrc"
 ```
 
-Or copy-paste directly the content of the files in your `~/.bashrc`.
+Then reload your shell:
+
+```bash
+source ~/.bashrc
+```
+
+If you prefer another location, keep the same idea: download `vims.bash` with `wget` and source that file from your `~/.bashrc`.
 
 ## Usage
 
 ```bash
+vims
 vims file1.txt
-vims -O file2.txt file3.txt
+vims file2.txt
 ```
 
 By default the server name is `VIMS`. Override it:
@@ -54,4 +61,8 @@ Use a different Vim executable:
 
 ```bash
 VIMS_VIM=vim.gtk3 vims
+VIMS_VIM=gvim vims
 ```
+
+Run `vims` with no arguments to focus the existing Vim instance when possible.
+Run `vims some_file` to open that file in a new tab in the existing instance.
