@@ -4,8 +4,8 @@
 #   VIMS_VIM     (default: vim)
 #   VIMS_JOB_ID  (set by vims when it backgrounds a vim process)
 
-vims_() {
-  local server_name vim_bin base
+vims() {
+  local server_name vim_bin base status line jobspec
   local -a launch_cmd
   server_name="${VIMS_SERVER:-VIMS}"
   vim_bin="${VIMS_VIM:-vim}"
@@ -36,12 +36,28 @@ MSG
       "${VIMS_CMD[@]}" --servername "$server_name" --remote-tab-silent "$@" || return $?
       if ((VIMS_GUI)); then
         "${VIMS_CMD[@]}" --servername "$server_name" --remote-send "<C-\\><C-N>:silent! call foreground()<CR>" >/dev/null 2>&1
+      elif [[ -n "${VIMS_JOB_ID:-}" ]]; then
+        while IFS= read -r line; do
+          if [[ "$line" =~ ^\[([0-9]+)\][+-]?[[:space:]]+([0-9]+)[[:space:]] ]] && [[ "${BASH_REMATCH[2]}" == "$VIMS_JOB_ID" ]]; then
+            jobspec="${BASH_REMATCH[1]}"
+            fg "%${jobspec}" >/dev/null
+            break
+          fi
+        done < <(jobs -l 2>/dev/null)
       fi
       return 0
     fi
 
     if ((VIMS_GUI)); then
       "${VIMS_CMD[@]}" --servername "$server_name" --remote-send "<C-\\><C-N>:silent! call foreground()<CR>" >/dev/null 2>&1
+    elif [[ -n "${VIMS_JOB_ID:-}" ]]; then
+      while IFS= read -r line; do
+        if [[ "$line" =~ ^\[([0-9]+)\][+-]?[[:space:]]+([0-9]+)[[:space:]] ]] && [[ "${BASH_REMATCH[2]}" == "$VIMS_JOB_ID" ]]; then
+          jobspec="${BASH_REMATCH[1]}"
+          fg "%${jobspec}" >/dev/null
+          break
+        fi
+      done < <(jobs -l 2>/dev/null)
     fi
     return 0
   fi
@@ -58,23 +74,16 @@ MSG
   "${launch_cmd[@]}" --servername "$server_name" "$@" &
   VIMS_JOB_ID="$!"
   export VIMS_JOB_ID
-}
-
-vims() {
-  local status line jobspec
-  vims_ "$@"
   status=$?
 
-  if (( status == 0 && ! VIMS_GUI )); then
-    if [[ -n "${VIMS_JOB_ID:-}" ]]; then
-      while IFS= read -r line; do
-        if [[ "$line" =~ ^\[([0-9]+)\][+-]?[[:space:]]+([0-9]+)[[:space:]] ]] && [[ "${BASH_REMATCH[2]}" == "$VIMS_JOB_ID" ]]; then
-          jobspec="${BASH_REMATCH[1]}"
-          fg "%${jobspec}" >/dev/null
-          break
-        fi
-      done < <(jobs -l 2>/dev/null)
-    fi
+  if (( status == 0 )) && [[ -n "${VIMS_JOB_ID:-}" ]]; then
+    while IFS= read -r line; do
+      if [[ "$line" =~ ^\[([0-9]+)\][+-]?[[:space:]]+([0-9]+)[[:space:]] ]] && [[ "${BASH_REMATCH[2]}" == "$VIMS_JOB_ID" ]]; then
+        jobspec="${BASH_REMATCH[1]}"
+        fg "%${jobspec}" >/dev/null
+        break
+      fi
+    done < <(jobs -l 2>/dev/null)
   fi
 
   return "$status"
