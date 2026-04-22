@@ -4,45 +4,8 @@
 #   VIMS_VIM     (default: vim)
 #   VIMS_JOB_ID  (set by vims when it backgrounds a vim process)
 
-_vims_prepare_cmd() {
-  local base
-  base="${1##*/}"
-
-  VIMS_CMD=("$1")
-  VIMS_GUI=0
-
-  if [[ "$base" == gvim* ]]; then
-    VIMS_GUI=1
-  fi
-}
-
-_vims_fg_by_pid() {
-  local pid line jobspec
-  pid="${1:-}"
-  [[ -n "$pid" ]] || return 1
-
-  # Parse `jobs -l` and bring matching job to foreground.
-  while IFS= read -r line; do
-    if [[ "$line" =~ ^\[([0-9]+)\][+-]?[[:space:]]+([0-9]+)[[:space:]] ]]; then
-      jobspec="${BASH_REMATCH[1]}"
-      if [[ "${BASH_REMATCH[2]}" == "$pid" ]]; then
-        fg "%${jobspec}" >/dev/null
-        return 0
-      fi
-    fi
-  done < <(jobs -l 2>/dev/null)
-
-  return 1
-}
-
-_vims_focus_existing() {
-  if ((VIMS_GUI)); then
-    "${VIMS_CMD[@]}" --servername "${VIMS_SERVER:-VIMS}" --remote-send "<C-\\><C-N>:silent! call foreground()<CR>" >/dev/null 2>&1
-  fi
-}
-
 vims_() {
-  local server_name vim_bin
+  local server_name vim_bin base
   local -a launch_cmd
   server_name="${VIMS_SERVER:-VIMS}"
   vim_bin="${VIMS_VIM:-vim}"
@@ -60,16 +23,26 @@ MSG
     return 2
   fi
 
-  _vims_prepare_cmd "$vim_bin"
+  base="${vim_bin##*/}"
+  VIMS_CMD=("$vim_bin")
+  VIMS_GUI=0
+
+  if [[ "$base" == gvim* ]]; then
+    VIMS_GUI=1
+  fi
 
   if "${VIMS_CMD[@]}" --serverlist 2>/dev/null | tr ' ' '\n' | grep -Fxq "$server_name"; then
     if (($# > 0)); then
       "${VIMS_CMD[@]}" --servername "$server_name" --remote-tab-silent "$@" || return $?
-      _vims_focus_existing
+      if ((VIMS_GUI)); then
+        "${VIMS_CMD[@]}" --servername "$server_name" --remote-send "<C-\\><C-N>:silent! call foreground()<CR>" >/dev/null 2>&1
+      fi
       return 0
     fi
 
-    _vims_focus_existing
+    if ((VIMS_GUI)); then
+      "${VIMS_CMD[@]}" --servername "$server_name" --remote-send "<C-\\><C-N>:silent! call foreground()<CR>" >/dev/null 2>&1
+    fi
     return 0
   fi
 
@@ -88,12 +61,20 @@ MSG
 }
 
 vims() {
-  local status
+  local status line jobspec
   vims_ "$@"
   status=$?
 
   if (( status == 0 && ! VIMS_GUI )); then
-    _vims_fg_by_pid "${VIMS_JOB_ID:-}" || true
+    if [[ -n "${VIMS_JOB_ID:-}" ]]; then
+      while IFS= read -r line; do
+        if [[ "$line" =~ ^\[([0-9]+)\][+-]?[[:space:]]+([0-9]+)[[:space:]] ]] && [[ "${BASH_REMATCH[2]}" == "$VIMS_JOB_ID" ]]; then
+          jobspec="${BASH_REMATCH[1]}"
+          fg "%${jobspec}" >/dev/null
+          break
+        fi
+      done < <(jobs -l 2>/dev/null)
+    fi
   fi
 
   return "$status"
