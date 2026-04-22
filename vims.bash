@@ -23,7 +23,7 @@ _vims_fg_by_pid() {
 
   # Parse `jobs -l` and bring matching job to foreground.
   while IFS= read -r line; do
-    if [[ "$line" =~ ^\[([0-9]+)\][[:space:]]+[-+[:space:]]*[[:space:]]*([0-9]+)[[:space:]] ]]; then
+    if [[ "$line" =~ ^\[([0-9]+)\][+-]?[[:space:]]+([0-9]+)[[:space:]] ]]; then
       jobspec="${BASH_REMATCH[1]}"
       if [[ "${BASH_REMATCH[2]}" == "$pid" ]]; then
         fg "%${jobspec}" >/dev/null
@@ -36,14 +36,12 @@ _vims_fg_by_pid() {
 }
 
 _vims_focus_existing() {
-  if _vims_fg_by_pid "${VIMS_JOB_ID:-}"; then
-    return 0
+  if ((VIMS_GUI)); then
+    "${VIMS_CMD[@]}" --servername "${VIMS_SERVER:-VIMS}" --remote-send "<C-\\><C-N>:silent! call foreground()<CR>" >/dev/null 2>&1
   fi
-
-  "${VIMS_CMD[@]}" --servername "${VIMS_SERVER:-VIMS}" --remote-send "<C-\\><C-N>:silent! call foreground()<CR>" >/dev/null 2>&1
 }
 
-vims() {
+vims_() {
   local server_name vim_bin
   local -a launch_cmd
   server_name="${VIMS_SERVER:-VIMS}"
@@ -84,5 +82,19 @@ MSG
     return 0
   fi
 
-  "${launch_cmd[@]}" --servername "$server_name" "$@"
+  "${launch_cmd[@]}" --servername "$server_name" "$@" &
+  VIMS_JOB_ID="$!"
+  export VIMS_JOB_ID
+}
+
+vims() {
+  local status
+  vims_ "$@"
+  status=$?
+
+  if (( status == 0 && ! VIMS_GUI )); then
+    _vims_fg_by_pid "${VIMS_JOB_ID:-}" || true
+  fi
+
+  return "$status"
 }

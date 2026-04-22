@@ -2,7 +2,7 @@
 
 `vims` is a Bash function around Vim that targets a **single Vim server**.
 
-- First call: starts Vim with a fixed `--servername` in the foreground for terminal Vim.
+- First call: starts Vim with a fixed `--servername`; terminal Vim is then brought to the foreground through shell job control.
 - Next calls: open files in tabs in that same instance and bring it back to the foreground when this shell owns it.
 
 This is useful when you want many shell invocations (`vims`, `vims file1`, `vims file2`, …) to reuse one persistent Vim UI/session.
@@ -66,3 +66,4 @@ VIMS_VIM=gvim vims
 
 Run `vims` with no arguments to focus the existing Vim instance when possible.
 Run `vims some_file` to open that file in a new tab in the existing instance.
+For terminal Vim, foregrounding only works from the same interactive shell that started the job.
